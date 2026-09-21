@@ -1,0 +1,45 @@
+name: Build Cinejoy Windows
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/build-windows.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore windows/CinejoyWindows.csproj
+
+      - name: Publish Windows x64
+        run: >
+          dotnet publish windows/CinejoyWindows.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o windows/publish
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Compress-Archive -Path windows/publish/* -DestinationPath Cinejoy-Windows-x64.zip -Force
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: cinejoy-windows-x64
+          path: Cinejoy-Windows-x64.zip
