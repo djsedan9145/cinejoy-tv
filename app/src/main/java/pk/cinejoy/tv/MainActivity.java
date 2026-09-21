@@ -16,18 +16,30 @@ import java.util.Locale;
 public class MainActivity extends Activity {
     private WebView web;
 
+    private boolean isCinejoyHost(String url) {
+        if (url == null) return false;
+        String u = url.toLowerCase(Locale.US).trim();
+
+        // Only Cinejoy pages are allowed as top-level navigation.
+        // External video/media resources can still load as sub-resources.
+        return u.startsWith("https://cinejoy.pk/") ||
+               u.startsWith("https://www.cinejoy.pk/") ||
+               u.startsWith("http://cinejoy.pk/") ||
+               u.startsWith("http://www.cinejoy.pk/");
+    }
+
     private boolean isBlockedHost(String url) {
         if (url == null) return false;
         String u = url.toLowerCase(Locale.US);
 
-        // Advertising, pop-up and redirect networks.
         String[] blocked = {
             "doubleclick.net", "googlesyndication.com", "googleadservices.com",
             "adservice.google.com", "googletagmanager.com", "googletagservices.com",
             "amazon-adsystem.com", "adsrvr.org", "adnxs.com", "taboola.com",
             "outbrain.com", "popads.net", "popcash.net", "propellerads.com",
             "exoclick.com", "onclickperformance.com", "trafficjunky.com",
-            "pypo.com", "pyppo.com"
+            "pypo.com", "pyppo.com", "adf.ly", "adfly",
+            "ouo.io", "ouo.press", "shrinkme.io", "shrinkearn.com"
         };
 
         for (String host : blocked) {
@@ -36,26 +48,30 @@ public class MainActivity extends Activity {
         return false;
     }
 
-    private boolean shouldBlockNavigation(String url) {
+    private boolean isBadScheme(String url) {
         if (url == null) return true;
         String u = url.trim().toLowerCase(Locale.US);
 
-        // Prevent Android WebView from trying to resolve intent://, market://,
-        // custom ad schemes and other external-app redirects.
-        if (u.startsWith("intent:") ||
-            u.startsWith("market:") ||
-            u.startsWith("javascript:") ||
-            u.startsWith("tel:") ||
-            u.startsWith("mailto:") ||
-            u.startsWith("whatsapp:")) {
-            return true;
-        }
-
-        // Block known advertising/redirect hosts before WebView loads them.
-        return isBlockedHost(u);
+        return u.startsWith("intent:") ||
+               u.startsWith("market:") ||
+               u.startsWith("javascript:") ||
+               u.startsWith("tel:") ||
+               u.startsWith("mailto:") ||
+               u.startsWith("whatsapp:") ||
+               u.startsWith("tg:") ||
+               u.startsWith("viber:");
     }
 
-    @Override protected void onCreate(Bundle b) {
+    private boolean shouldBlockNavigation(String url) {
+        if (isBadScheme(url)) return true;
+        if (isBlockedHost(url)) return true;
+
+        // The main WebView must never leave Cinejoy.
+        return !isCinejoyHost(url);
+    }
+
+    @Override
+    protected void onCreate(Bundle b) {
         super.onCreate(b);
 
         getWindow().getDecorView().setSystemUiVisibility(
@@ -76,8 +92,11 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);
+
+        // Do not allow popup/new-window navigation.
         s.setSupportMultipleWindows(false);
         s.setJavaScriptCanOpenWindowsAutomatically(false);
+
         s.setBuiltInZoomControls(false);
         s.setDisplayZoomControls(false);
 
@@ -89,11 +108,12 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
 
+                // Block every external top-level redirect, including redirects
+                // triggered after a random click anywhere on the page.
                 if (shouldBlockNavigation(url)) {
                     return true;
                 }
 
-                // Keep all normal web navigation inside Cinejoy.
                 return false;
             }
 
@@ -106,12 +126,23 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                // Catch redirects initiated by JavaScript/location changes that
+                // bypass normal link handling.
+                if (!isCinejoyHost(url)) {
+                    view.stopLoading();
+                    return;
+                }
+                super.onPageStarted(view, url, favicon);
+            }
+
+            @Override
             public WebResourceResponse shouldInterceptRequest(
                     WebView view, WebResourceRequest request) {
 
                 String url = request.getUrl().toString();
 
-                if (isBlockedHost(url)) {
+                if (isBlockedHost(url) || isBadScheme(url)) {
                     return new WebResourceResponse(
                         "text/plain",
                         "UTF-8",
@@ -123,7 +154,9 @@ public class MainActivity extends Activity {
             }
         });
 
+        // Popups/new windows are deliberately not created.
         web.setWebChromeClient(new WebChromeClient());
+
         web.loadUrl("https://cinejoy.pk/");
         web.requestFocus(View.FOCUS_DOWN);
     }
