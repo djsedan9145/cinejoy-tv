@@ -3,6 +3,7 @@ name: Build Cinejoy Windows
 on:
   workflow_dispatch:
   push:
+    branches: [ main ]
     paths:
       - 'windows/**'
       - '.github/workflows/build-windows.yml'
