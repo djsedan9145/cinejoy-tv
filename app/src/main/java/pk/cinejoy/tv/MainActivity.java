@@ -2,89 +2,103 @@ package pk.cinejoy.tv;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.graphics.Color;
+import android.net.Uri;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-
+import android.widget.FrameLayout;
+import android.widget.TextView;
 import java.io.ByteArrayInputStream;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
     private WebView web;
-    private String lastSafeUrl = "https://cinejoy.pk/";
+    private TextView errorView;
 
     private boolean isCinejoyHost(String url) {
         if (url == null) return false;
-        String u = url.toLowerCase(Locale.US).trim();
-        return u.startsWith("https://cinejoy.pk/") ||
-               u.startsWith("https://www.cinejoy.pk/") ||
-               u.startsWith("http://cinejoy.pk/") ||
-               u.startsWith("http://www.cinejoy.pk/");
+        try {
+            String host = Uri.parse(url).getHost();
+            return host != null && (host.equalsIgnoreCase("cinejoy.pk") || host.equalsIgnoreCase("www.cinejoy.pk"));
+        } catch (Exception e) { return false; }
     }
 
     private boolean isBlockedHost(String url) {
         if (url == null) return false;
         String u = url.toLowerCase(Locale.US);
-
-        String[] blocked = {
-            "doubleclick.net", "googlesyndication.com", "googleadservices.com",
-            "adservice.google.com", "googletagmanager.com", "googletagservices.com",
-            "amazon-adsystem.com", "adsrvr.org", "adnxs.com", "taboola.com",
-            "outbrain.com", "popads.net", "popcash.net", "propellerads.com",
-            "exoclick.com", "onclickperformance.com", "trafficjunky.com",
-            "pypo.com", "pyppo.com", "adf.ly", "adfly",
-            "ouo.io", "ouo.press", "shrinkme.io", "shrinkearn.com"
-        };
-
-        for (String host : blocked) {
-            if (u.contains(host)) return true;
-        }
+        String[] blocked = {"doubleclick.net","googlesyndication.com","googleadservices.com","adservice.google.com",
+            "googletagmanager.com","googletagservices.com","amazon-adsystem.com","adsrvr.org","adnxs.com",
+            "taboola.com","outbrain.com","popads.net","popcash.net","propellerads.com","exoclick.com",
+            "onclickperformance.com","trafficjunky.com","pypo.com","pyppo.com","adf.ly","adfly","ouo.io",
+            "ouo.press","shrinkme.io","shrinkearn.com"};
+        for (String h : blocked) if (u.contains(h)) return true;
         return false;
     }
 
     private boolean isBadScheme(String url) {
         if (url == null) return true;
         String u = url.trim().toLowerCase(Locale.US);
-
-        return u.startsWith("intent:") ||
-               u.startsWith("market:") ||
-               u.startsWith("javascript:") ||
-               u.startsWith("tel:") ||
-               u.startsWith("mailto:") ||
-               u.startsWith("whatsapp:") ||
-               u.startsWith("tg:") ||
-               u.startsWith("viber:");
+        return u.startsWith("intent:") || u.startsWith("market:") || u.startsWith("javascript:") ||
+               u.startsWith("tel:") || u.startsWith("mailto:") || u.startsWith("whatsapp:") ||
+               u.startsWith("tg:") || u.startsWith("viber:");
     }
 
-    private boolean shouldBlockNavigation(String url) {
+    private boolean blockMainNavigation(String url) {
         return isBadScheme(url) || isBlockedHost(url) || !isCinejoyHost(url);
     }
 
-    @Override
-    protected void onCreate(Bundle b) {
+    private void showError(String msg) {
+        errorView.setText("Cinejoy could not load.\n\n" + msg + "\n\nPress OK to retry.");
+        errorView.setVisibility(View.VISIBLE);
+        errorView.requestFocus();
+    }
+
+    private void retry() {
+        errorView.setVisibility(View.GONE);
+        web.clearCache(false);
+        web.loadUrl("https://cinejoy.pk/");
+        web.requestFocus();
+    }
+
+    @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
-
-        getWindow().setFlags(
-            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN
-        );
-
+        getWindow().setFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(
-            View.SYSTEM_UI_FLAG_FULLSCREEN |
-            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
-            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-        );
+                View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
 
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.BLACK);
         web = new WebView(this);
-        setContentView(web);
+        web.setBackgroundColor(Color.BLACK);
+        root.addView(web, new FrameLayout.LayoutParams(-1, -1));
+
+        errorView = new TextView(this);
+        errorView.setTextColor(Color.WHITE);
+        errorView.setTextSize(20);
+        errorView.setGravity(17);
+        errorView.setFocusable(true);
+        errorView.setFocusableInTouchMode(true);
+        errorView.setOnClickListener(v -> retry());
+        errorView.setOnKeyListener((v,key,event) -> {
+            if (event.getAction() == android.view.KeyEvent.ACTION_UP &&
+                (key == android.view.KeyEvent.KEYCODE_DPAD_CENTER || key == android.view.KeyEvent.KEYCODE_ENTER)) {
+                retry(); return true;
+            }
+            return false;
+        });
+        errorView.setVisibility(View.GONE);
+        root.addView(errorView, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(root);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -99,102 +113,48 @@ public class MainActivity extends Activity {
         s.setDisplayZoomControls(false);
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(true);
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        String ua = s.getUserAgentString();
+        s.setUserAgentString(ua.replace("; wv", ""));
 
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
-
         web.setFocusable(true);
         web.setFocusableInTouchMode(true);
 
         web.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                String url = request.getUrl().toString();
-
-                if (!request.isForMainFrame()) {
-                    return false;
-                }
-
-                if (shouldBlockNavigation(url)) {
-                    return true;
-                }
-
-                lastSafeUrl = url;
-                return false;
+            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                String url = r.getUrl().toString();
+                if (!r.isForMainFrame()) return false;
+                return blockMainNavigation(url);
             }
 
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                if (shouldBlockNavigation(url)) {
-                    return true;
-                }
-
-                lastSafeUrl = url;
-                return false;
+            @Override public boolean shouldOverrideUrlLoading(WebView v, String url) {
+                return blockMainNavigation(url);
             }
 
-            @Override
-            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                if (!isCinejoyHost(url)) {
-                    view.stopLoading();
-                    view.postDelayed(() -> {
-                        if (isCinejoyHost(lastSafeUrl)) {
-                            view.loadUrl(lastSafeUrl);
-                        }
-                    }, 50);
-                    return;
-                }
-
-                lastSafeUrl = url;
-                super.onPageStarted(view, url, favicon);
+            @Override public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) {
+                if (r.isForMainFrame()) showError(e.getDescription() + "\nError code: " + e.getErrorCode());
+                super.onReceivedError(v,r,e);
             }
 
-            @Override
-            public WebResourceResponse shouldInterceptRequest(
-                    WebView view, WebResourceRequest request) {
-
-                String url = request.getUrl().toString();
-
-                if (isBlockedHost(url) || isBadScheme(url)) {
-                    return new WebResourceResponse(
-                        "text/plain",
-                        "UTF-8",
-                        new ByteArrayInputStream(new byte[0])
-                    );
-                }
-
-                return super.shouldInterceptRequest(view, request);
+            @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
+                String url = r.getUrl().toString();
+                if (isBlockedHost(url) || isBadScheme(url))
+                    return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));
+                return super.shouldInterceptRequest(v,r);
             }
         });
-
-        web.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public boolean onCreateWindow(
-                    WebView view,
-                    boolean isDialog,
-                    boolean isUserGesture,
-                    android.os.Message resultMsg) {
-                return false;
-            }
-        });
-
-        WebView.setWebContentsDebuggingEnabled(false);
-
+        web.setWebChromeClient(new WebChromeClient());
         web.loadUrl("https://cinejoy.pk/");
         web.requestFocus(View.FOCUS_DOWN);
     }
 
-    @Override
-    public void onBackPressed() {
-        if (web != null && web.canGoBack()) {
-            web.goBack();
-        } else {
-            super.onBackPressed();
-        }
+    @Override public void onBackPressed() {
+        if (web != null && web.canGoBack()) web.goBack(); else super.onBackPressed();
     }
 
-    @Override
-    protected void onDestroy() {
+    @Override protected void onDestroy() {
         if (web != null) {
             web.stopLoading();
             web.loadUrl("about:blank");
@@ -202,7 +162,6 @@ public class MainActivity extends Activity {
             web.destroy();
             web = null;
         }
-
         super.onDestroy();
     }
 }
